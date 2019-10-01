@@ -28,6 +28,8 @@
 #include <iostream>
 #include <string>
 #include <cstdlib>
+#include <nlohmann/json.hpp>
+using json = nlohmann::json;
 
 
 namespace rmlab
@@ -117,25 +119,51 @@ namespace detail
     Notebook::Notebook( std::string const openPathUUID ) :
         version(3), npages( 0 ), pathUUID( openPathUUID )
     {
-        // append directory_separator if missing
+        // remove directory_separator if present
         std::string const sep( &auxiliary::directory_separator, 1 );
-        if( pathUUID.compare( pathUUID.size() - 1u, 1, sep) != 0 )
-            pathUUID.append(sep);
-
-        if( ! auxiliary::directory_exists( pathUUID ) )
+        if( pathUUID.compare( pathUUID.size() - 1u, 1, sep) == 0 )
         {
-            std::cerr << "Path '" << pathUUID
+            pathUUID.pop_back();
+        }
+
+        if( ! auxiliary::directory_exists( pathUUID + sep ) )
+        {
+            std::cerr << "Path '" << pathUUID + sep
                       << "' not found or not accessible!\n";
             return;
         }
 
-        auto lsPath = auxiliary::list_directory( pathUUID );
-        for( auto& lsEntry: lsPath )
-        {
-            if( lsEntry.compare( lsEntry.size() - 3u, 3u, ".rm") != 0 )
-                continue;
+        std::cout << openPathUUID << "\n";
+        std::cout << pathUUID << std::endl;
+        std::string content_path = pathUUID + std::string(".content");
+        std::cout << content_path << "\n";
+        std::ifstream fstream( content_path, std::ios::binary | std::ifstream::in );
+        json j;
+        // std::string s;
+        // fstream >> s;
+        // std::cout << s;
+        fstream >> j;
+        std::cout << j["margins"] << std::endl;
 
-            npages += 1;
+        // parse number of pages
+        if( j.count("pageCount") )
+        {
+            std::cout << "extracted pageCount" << "\n";
+            npages = j["pageCount"];
+        }
+        // fall back to old page parsing method
+        else
+        {
+            auto lsPath = auxiliary::list_directory( pathUUID );
+            for( auto& lsEntry: lsPath )
+            {
+                std::cout << "\n";
+                std::cout << std::to_string(lsEntry[0]);
+                if( lsEntry.compare( lsEntry.size() - 3u, 3u, ".rm") != 0 )
+                    continue;
+
+                npages += 1;
+            }
         }
 
         if( npages == 0 )
@@ -145,9 +173,27 @@ namespace detail
             return;
         }
 
-        for( int p = 0; p < npages; ++p )
+        // parse page names from .content
+        if( j.count("pages") )
         {
-            std::string fullname = pathUUID + std::to_string(p) + std::string(".rm");
+            std::cout << "put page string in list" << "\n";
+            auto page_strings = j["pages"];
+
+        }
+        // use enumerated page format
+        else
+        {
+            std::list< std::string > page_strings;
+            for( int p = 0; p < npages; ++p )
+            {
+                page_strings.push_back(std::to_string(p));
+            }
+        }
+
+        for( auto & page_string : page_strings )
+        {
+            std::cout << "page_str:" << page_string << std::endl;
+            std::string fullname = pathUUID + sep + page_string + std::string(".rm");
             std::ifstream fstream( fullname, std::ios::binary | std::ifstream::in );
             if( !fstream.good() )
             {
